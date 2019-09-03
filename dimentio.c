@@ -171,18 +171,6 @@ init_tfp0(void) {
 	return KERN_FAILURE;
 }
 
-static kaddr_t
-get_kbase(kaddr_t *kslide) {
-	mach_msg_type_number_t cnt = TASK_DYLD_INFO_COUNT;
-	task_dyld_info_data_t dyld_info;
-
-	if(task_info(tfp0, TASK_DYLD_INFO, (task_info_t)&dyld_info, &cnt) == KERN_SUCCESS) {
-		*kslide = dyld_info.all_image_info_size;
-		return dyld_info.all_image_info_addr;
-	}
-	return 0;
-}
-
 static kern_return_t
 kread_buf(kaddr_t addr, void *buf, mach_vm_size_t sz) {
 	mach_vm_address_t p = (mach_vm_address_t)buf;
@@ -507,7 +495,7 @@ dimentio(uint64_t nonce) {
 }
 
 int
-main(void) {
+main(int argc, char *argv[]) {
 	kaddr_t kbase, kslide;
 	pfinder_t pfinder;
 
@@ -515,7 +503,9 @@ main(void) {
 		printf("arm_pgshift: %u\n", arm_pgshift);
 		if(init_tfp0() == KERN_SUCCESS) {
 			printf("tfp0: 0x%" PRIx32 "\n", tfp0);
-			if((kbase = get_kbase(&kslide))) {
+			if(argc == 3) {
+				kbase = (kaddr_t)strtoull(argv[1], NULL, 0);
+				kslide = (kaddr_t)strtoull(argv[2], NULL, 0);
 				printf("kbase: " KADDR_FMT "\n", kbase);
 				printf("kslide: " KADDR_FMT "\n", kslide);
 				if(pfinder_init(&pfinder, kbase) == KERN_SUCCESS) {
