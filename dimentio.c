@@ -488,7 +488,7 @@ sync_nonce(io_service_t nvram_serv) {
 }
 
 static void
-dimentio(uint64_t nonce) {
+dimentio(uint64_t nonce, bool is_read) {
 	kaddr_t boot_nonce_os_symbol, of_dict, os_string, string_ptr;
 	char nonce_hex[2 * sizeof(nonce) + sizeof("0x")];
 	io_service_t nonce_serv, nvram_serv;
@@ -497,7 +497,7 @@ dimentio(uint64_t nonce) {
 		printf("our_task: " KADDR_FMT "\n", our_task);
 		if((nonce_serv = get_serv("AppleMobileApNonce")) != IO_OBJECT_NULL) {
 			printf("nonce_serv: 0x%" PRIx32 "\n", nonce_serv);
-			if(nonce_generate(nonce_serv) == KERN_SUCCESS && get_boot_nonce_os_symbol(nonce_serv, &boot_nonce_os_symbol) == KERN_SUCCESS) {
+			if((is_read || nonce_generate(nonce_serv) == KERN_SUCCESS) && get_boot_nonce_os_symbol(nonce_serv, &boot_nonce_os_symbol) == KERN_SUCCESS) {
 				printf("boot_nonce_os_symbol: " KADDR_FMT "\n", boot_nonce_os_symbol);
 				if((nvram_serv = get_serv("IODTNVRAM")) != IO_OBJECT_NULL) {
 					printf("nvram_serv: 0x%" PRIx32 "\n", nvram_serv);
@@ -507,9 +507,13 @@ dimentio(uint64_t nonce) {
 							printf("os_string: " KADDR_FMT "\n", os_string);
 							if(kread_addr(os_string + OS_STRING_STRING_OFF, &string_ptr) == KERN_SUCCESS && string_ptr) {
 								printf("string_ptr: " KADDR_FMT "\n", string_ptr);
-								snprintf(nonce_hex, sizeof(nonce_hex), "0x%016" PRIx64, nonce);
-								if(kwrite_buf(string_ptr, nonce_hex, sizeof(nonce_hex)) == KERN_SUCCESS && sync_nonce(nvram_serv) == KERN_SUCCESS) {
-									printf("Set nonce to 0x%016" PRIx64 "\n", nonce);
+								if(is_read && kread_buf(string_ptr, nonce_hex, sizeof(nonce_hex)) == KERN_SUCCESS) {
+									printf("Currently nonce is %.*s\n", (int)sizeof(nonce_hex), nonce_hex);
+								} else {
+									snprintf(nonce_hex, sizeof(nonce_hex), "0x%016" PRIx64, nonce);
+									if(kwrite_buf(string_ptr, nonce_hex, sizeof(nonce_hex)) == KERN_SUCCESS && sync_nonce(nvram_serv) == KERN_SUCCESS) {
+										printf("Set nonce to 0x%016" PRIx64 "\n", nonce);
+									}
 								}
 							}
 						}
@@ -524,11 +528,12 @@ dimentio(uint64_t nonce) {
 
 int
 main(int argc, char **argv) {
+	uint64_t nonce = 0;
+	bool is_read = false;
 	kaddr_t kbase, kslide;
 	pfinder_t pfinder;
-	uint64_t nonce;
 
-	if(argc == 2 && sscanf(argv[1], "0x%016" PRIx64, &nonce) == 1) {
+	if((argc == 1 && (is_read = true)) || (argc == 2 && sscanf(argv[1], "0x%016" PRIx64, &nonce) == 1)) {
 		if(init_arm_pgshift() == KERN_SUCCESS) {
 			printf("arm_pgshift: %u\n", arm_pgshift);
 			if(init_tfp0() == KERN_SUCCESS) {
@@ -538,7 +543,7 @@ main(int argc, char **argv) {
 					printf("kslide: " KADDR_FMT "\n", kslide);
 					if(pfinder_init(&pfinder, kbase) == KERN_SUCCESS) {
 						if(pfinder_init_offsets(pfinder) == KERN_SUCCESS) {
-							dimentio(nonce);
+							dimentio(nonce, is_read);
 						}
 						pfinder_term(&pfinder);
 					}
@@ -547,6 +552,6 @@ main(int argc, char **argv) {
 			}
 		}
 	} else {
-		printf("Usage: %s nonce\n", argv[0]);
+		printf("Usage: %s [nonce]\n", argv[0]);
 	}
 }
